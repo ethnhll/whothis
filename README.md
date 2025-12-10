@@ -82,7 +82,6 @@ vars:
     - stow
     - vim
     - your-package-here
-
   brew_casks:
     - iterm2 
     - your-cask-here

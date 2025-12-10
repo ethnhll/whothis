@@ -44,7 +44,8 @@ set title
 set hidden
 set autoread
 set undofile
-set undodir=~/.vim/undodir
+set undodir=~/.vim/cache/undodir
+set viminfofile=~/.vim/cache/viminfo
 
 " whitespace visibility
 set list

@@ -1,5 +1,4 @@
 # whothis - System bootstrap configuration
-# Step 1: OS Detection
 
 VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 UNAME := $(shell uname -s)
@@ -17,9 +16,9 @@ else
     $(error Unsupported operating system: $(UNAME))
 endif
 
-.PHONY: all version pkg-manager uv ansible playbook
+.PHONY: all version pkg-manager uv playbook
 
-all: version pkg-manager uv ansible playbook
+all: version pkg-manager uv playbook
 
 version:
 	@echo "=== whothis v$(VERSION) ==="
@@ -53,8 +52,6 @@ else
 endif
 endif
 
-
-
 uv:
 	@if command -v uv >/dev/null 2>&1; then \
 		echo "uv is already installed: $$(uv --version)"; \
@@ -70,21 +67,15 @@ else ifeq ($(OS),linux)
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 endif
 
-VENV_DIR := .venv
-ANSIBLE := $(VENV_DIR)/bin/ansible
-
-ansible: uv
-	@if [ -f "$(ANSIBLE)" ]; then \
-		echo "Ansible is already installed: $$(uv run ansible --version | head -1)"; \
-	else \
-		echo "Installing dependencies..."; \
-		uv sync; \
-	fi
-
-playbook: ansible
+playbook: uv
 	@echo "Running playbook..."
-	@uv run ansible-playbook ansible/playbook.yml
-
+	@uvx --from ansible-core \
+		 --with ansible \
+		 ansible-playbook \
+		 --ask-become-pass \
+		 --extra-vars ansible_python_interpreter=python3 \
+		 --inventory localhost, \
+		 ansible/playbook.yml
 
 _clean:
 	# todo: remove .venv/

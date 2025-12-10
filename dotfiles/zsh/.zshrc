@@ -16,6 +16,8 @@ zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 
 # Vi mode
 bindkey -v
+bindkey -M viins '^R' history-incremental-search-backward
+bindkey -M vicmd '^R' history-incremental-search-backward
 
 # Prompt
 eval "$(starship init zsh)"

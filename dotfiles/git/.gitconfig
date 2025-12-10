@@ -1,7 +1,5 @@
-; whothis managed gitconfig
-
- [user]
-        email = 5614778+ethnhll@users.noreply.github.com
-        name = Ethan Hill
+[user]
+	email = 5614778+ethnhll@users.noreply.github.com
+	name = Ethan Hill
 [init]
-        defaultBranch = main
+	defaultBranch = main
