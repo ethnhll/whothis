@@ -1,0 +1,10 @@
+# python
+.venv/
+
+# AI/Agents
+CLAUDE.md
+
+# IDEs and text editors
+*.swp
+.idea/
+vim/undodir/*

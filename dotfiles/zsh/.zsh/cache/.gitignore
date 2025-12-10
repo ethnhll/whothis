@@ -1,0 +1,5 @@
+# ignore everything but this file
+*
+!.gitignore
+
+# I do this so that my `stow` workflow will create an empty cache directory
