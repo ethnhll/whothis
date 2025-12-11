@@ -36,7 +36,7 @@ set cursorline
 set colorcolumn=80
 set scrolloff=8
 set sidescrolloff=8
-set signalcolumn=auto
+set signcolumn=auto
 set showcmd
 set title
 
@@ -49,4 +49,4 @@ set viminfofile=~/.vim/cache/viminfo
 
 " whitespace visibility
 set list
-set listchars=tab:→,trail:·,nbsp:␣
+set listchars=tab:→\ ,trail:·,nbsp:␣
