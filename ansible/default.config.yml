@@ -2,6 +2,7 @@
 
 dotfiles_dir: "{{ playbook_dir }}/../dotfiles"
 dotfile_packages:
+  - cache
   - claude
   - git
   - ssh
@@ -35,3 +36,10 @@ homebrew_casks:
   - rectangle  # tiling window manager
   - virtualbox
   - yubico-authenticator  # security key TOTP
+
+store_apps:
+  - 497799835  # XCode
+  - 897283731  # Strongbox
+  - 409183694  # Keynote
+  - 409203825  # Numbers
+  - 409201541  # Pages

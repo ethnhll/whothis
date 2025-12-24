@@ -2,24 +2,42 @@
 
 # whothis - Macbook bootstrap configuration
 
-set -e;
+set -e
 
-UNAME=$(shell uname -s);
+REPO_URL="https://github.com/ethnhll/whothis.git"
+INSTALL_DIR="${HOME}/whothis"
+
+UNAME=$(uname -s)
 
 # only macOS is supported
 if [ "$UNAME" != "Darwin" ]; then
-    echo "error Unsupported operating system: $UNAME"
+    echo "error: Unsupported operating system: $UNAME"
+    exit 1
 fi
 
-# Create marker file that triggers CLT availability in softwareupdate
-touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
-CLT_PACKAGE=$(softwareupdate --list | grep "Label: Command Line Tools for Xcode" | head -1 | cut -d: -f2);
-echo "Installing Command Line Tools...";
-softwareupdate -i "$CLT_PACKAGE" --agree-to-license;
-echo "Command Line Tools successfully installed."
-# Clean up marker
-rm /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+# Install CLT only if not already present
+if ! xcode-select -p >/dev/null 2>&1; then
+    touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+    CLT_PACKAGE=$(softwareupdate --list | grep "Label: Command Line Tools" | head -1 | awk -F: '{print $2}' | xargs)
+    echo "Installing Command Line Tools..."
+    softwareupdate -i "$CLT_PACKAGE" --agree-to-license
+    echo "Command Line Tools successfully installed."
+    rm /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+else
+    echo "Command Line Tools already installed."
+fi
 
+# Clone or update repository
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Updating existing installation..."
+    git -C "$INSTALL_DIR" pull
+else
+    echo "Cloning whothis..."
+    git clone "$REPO_URL" "$INSTALL_DIR"
+fi
+
+# Run the bootstrap
+cd "$INSTALL_DIR"
 make
 
 exit 0

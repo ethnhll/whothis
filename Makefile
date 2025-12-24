@@ -1,7 +1,7 @@
 # whothis - Macbook bootstrap configuration
 
-.PHONY: all version homebrew ansible-dependencies uv playbook
-all: version homebrew ansible-dependencies uv playbook
+.PHONY: all version homebrew uv playbook
+all: version homebrew uv playbook
 
 VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 UNAME := $(shell uname -s)
@@ -35,12 +35,6 @@ uv: homebrew
 		echo "Installing uv..." && \
 		brew install uv; \
 	fi
-
-ansible-dependencies: uv
-	@echo "Downloading dependencies for ansible playbook..."
-	@uvx --from ansible-core \
-		 --with ansible \
-	 	 ansible-galaxy role install elliotweiser.osx-command-line-tools
 
 playbook: uv
 	@echo "Running playbook..."
