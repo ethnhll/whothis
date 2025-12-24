@@ -1,0 +1,37 @@
+---
+
+dotfiles_dir: "{{ playbook_dir }}/../dotfiles"
+dotfile_packages:
+  - claude
+  - git
+  - ssh
+  - vim
+  - zsh
+
+homebrew_packages:
+  - act  # github actions local testing
+  - colima
+  - docker
+  - git
+  - localstack
+  - mas  # Mac Apple Store CLI
+  - starship
+  - stow
+  - vim
+  - zsh-completions
+
+homebrew_casks:
+  - claude
+  - claude-code
+  - chromium
+  - firefox@developer-edition
+  - iterm2
+  - jetbrains-toolbox
+  - keepassxc  # provides keepassxc-cli
+  - obsidian  # text editor
+  - proton-drive
+  - proton-pass
+  - protonvpn
+  - rectangle  # tiling window manager
+  - virtualbox
+  - yubico-authenticator  # security key TOTP

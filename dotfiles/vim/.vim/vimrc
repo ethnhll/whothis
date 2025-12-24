@@ -32,20 +32,21 @@ set wildmode=list:longest
 set backspace=indent,eol,start
 
 " visual/ui
-set cursorline
 set colorcolumn=80
 set scrolloff=8
 set sidescrolloff=8
 set signcolumn=auto
 set showcmd
 set title
+set noerrorbells        " turn off audio bell
+set visualbell          " but leave on a visual bell
 
 " files/buffers
 set hidden
 set autoread
 set undofile
-set undodir=~/.vim/cache/undodir
-set viminfofile=~/.vim/cache/viminfo
+set undodir=~/.cache/vim/undodir
+set viminfofile=~/.cache/vim/viminfo
 
 " whitespace visibility
 set list

@@ -1,0 +1,28 @@
+---
+- name: Configure system
+  hosts: localhost
+  connection: local
+
+  vars_files:
+    - default.config.yml
+
+  tasks:
+    - name: Stow dotfiles
+      ansible.builtin.command:
+        cmd: stow --adopt -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}
+      loop: "{{ dotfile_packages }}"
+      register: stow_result
+      changed_when: stow_result.rc == 0
+
+    - name: Install Homebrew packages
+      when: ansible_os_family == "Darwin"
+      community.general.homebrew:
+        name: "{{ homebrew_packages }}"
+        state: present
+        update_homebrew: true
+
+    - name: Install Homebrew casks
+      when: ansible_os_family == "Darwin"
+      community.general.homebrew_cask:
+        name: "{{ homebrew_casks }}"
+        state: present

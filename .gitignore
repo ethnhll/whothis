@@ -3,6 +3,7 @@
 
 # AI/Agents
 CLAUDE.md
+.claude/*.local.*
 
 # IDEs and text editors
 *.swp
