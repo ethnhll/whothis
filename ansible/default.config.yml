@@ -5,6 +5,7 @@ brew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/l
 dotfiles_dir: "{{ playbook_dir }}/../dotfiles"
 dotfile_packages:
   - cache
+  - config
   - claude
   - git
   - ssh
@@ -15,6 +16,7 @@ homebrew_packages:
   - act  # github actions local testing
   - colima
   - docker
+  - gh  # github cli
   - git
   - localstack
   - mas  # Mac Apple Store CLI

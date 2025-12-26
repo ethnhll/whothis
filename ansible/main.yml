@@ -24,17 +24,6 @@
       tags:
         - homebrew_casks
 
-    - name: Install Apple Store Apps
-      when: ansible_os_family == "Darwin"
-      become: true
-      ansible.builtin.command:
-        cmd: "{{ brew_prefix }}/bin/mas install {{ store_apps | join(' ') }}"
-      register: app_store_result
-      changed_when: "'Already installed' not in app_store_result.stdout"
-      failed_when: app_store_result.rc != 0 and 'Already installed' not in app_store_result.stdout
-      tags:
-        - app_store
-
     - name: Stow dotfiles
       ansible.builtin.command:
         cmd: "{{ brew_prefix }}/bin/stow --no-folding --override -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}"
