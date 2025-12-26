@@ -7,15 +7,6 @@
     - default.config.yml
 
   tasks:
-    - name: Stow dotfiles
-      ansible.builtin.command:
-        cmd: stow --no-folding --override -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}
-      loop: "{{ dotfile_packages }}"
-      register: stow_result
-      changed_when: stow_result.rc == 0
-      tags:
-        - dotfiles
-
     - name: Install Homebrew packages
       when: ansible_os_family == "Darwin"
       community.general.homebrew:
@@ -43,3 +34,12 @@
       failed_when: app_store_result.rc != 0 and 'Already installed' not in app_store_result.stdout
       tags:
         - app_store
+
+    - name: Stow dotfiles
+      ansible.builtin.command:
+        cmd: stow --no-folding --override -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}
+      loop: "{{ dotfile_packages }}"
+      register: stow_result
+      changed_when: stow_result.rc == 0
+      tags:
+        - dotfiles
