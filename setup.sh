@@ -15,6 +15,13 @@ if [ "$UNAME" != "Darwin" ]; then
     exit 1
 fi
 
+# Homebrew requires admin privileges
+if ! dseditgroup -o checkmember -m "$(whoami)" admin >/dev/null 2>&1; then
+    echo "error: User must be an Administrator to install Homebrew."
+    echo "Add this user to the admin group in System Settings > Users & Groups."
+    exit 1
+fi
+
 # Install CLT only if not already present
 if ! xcode-select -p >/dev/null 2>&1; then
     touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
