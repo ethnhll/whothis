@@ -26,7 +26,7 @@
 
     - name: Stow dotfiles
       ansible.builtin.command:
-        cmd: "{{ brew_prefix }}/bin/stow --no-folding --override -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}"
+        cmd: "{{ brew_prefix }}/bin/stow --no-folding --override='.*' -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}"
       loop: "{{ dotfile_packages }}"
       register: stow_result
       changed_when: stow_result.rc == 0
