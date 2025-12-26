@@ -34,10 +34,12 @@ else
     echo "Command Line Tools already installed."
 fi
 
-# Clone or update repository
+# Clone or update repository (always sync to upstream)
 if [ -d "$INSTALL_DIR" ]; then
-    echo "Updating existing installation..."
-    git -C "$INSTALL_DIR" pull
+    echo "Resetting to upstream..."
+    git -C "$INSTALL_DIR" fetch origin
+    git -C "$INSTALL_DIR" reset --hard origin/main
+    git -C "$INSTALL_DIR" clean -fd
 else
     echo "Cloning whothis..."
     git clone "$REPO_URL" "$INSTALL_DIR"
@@ -47,4 +49,5 @@ fi
 cd "$INSTALL_DIR"
 make
 
-exit 0
+# Start fresh shell with new configuration
+exec zsh -l
