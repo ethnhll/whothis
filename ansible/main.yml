@@ -9,7 +9,7 @@
   tasks:
     - name: Stow dotfiles
       ansible.builtin.command:
-        cmd: stow --no-folding --adopt -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}
+        cmd: stow --no-folding --override -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}
       loop: "{{ dotfile_packages }}"
       register: stow_result
       changed_when: stow_result.rc == 0
