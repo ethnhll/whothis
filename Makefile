@@ -65,5 +65,5 @@ playbook: uv
 
 appstore: playbook
 	@echo "Installing Mac App Store apps..."
-	sudo $(BREW_PREFIX)/bin/mas install $(STORE_APPS) --force
+	$(BREW_PREFIX)/bin/mas install --force $(STORE_APPS)
 
