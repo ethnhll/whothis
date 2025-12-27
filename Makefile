@@ -1,15 +1,7 @@
 # whothis - Macbook bootstrap configuration
 
-.PHONY: all version homebrew uv playbook appstore
-all: version homebrew uv playbook appstore
-
-# Mac App Store app IDs
-# 497799835  - Xcode
-# 897283731  - Strongbox
-# 409183694  - Keynote
-# 409203825  - Numbers
-# 409201541  - Pages
-STORE_APPS := 497799835 897283731 409183694 409203825 409201541
+.PHONY: all version homebrew uv playbook
+all: version homebrew uv playbook
 
 VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 UNAME := $(shell uname -s)
@@ -62,8 +54,3 @@ playbook: uv
 		 --extra-vars ansible_python_interpreter=python3 \
 		 --inventory inventory, \
 		 ansible/main.yml
-
-appstore: playbook
-	@echo "Installing Mac App Store apps..."
-	$(BREW_PREFIX)/bin/mas install --force $(STORE_APPS)
-

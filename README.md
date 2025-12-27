@@ -94,9 +94,8 @@ make playbook             # Run the Ansible playbook
 ## Customization
 
 Edit `ansible/default.config.yml` to customize:
-- `homebrew_installed_packages` - CLI tools to install
-- `homebrew_cask_apps` - GUI applications to install
-- `mas_installed_apps` - Mac App Store apps to install
+- `homebrew_packages` - CLI tools to install
+- `homebrew_casks` - GUI applications to install
 
 ## Requirements
 
