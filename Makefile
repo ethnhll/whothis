@@ -38,6 +38,10 @@ UVX := $(BREW_PREFIX)/bin/uvx
 ANSIBLE_PY := 3.12
 ANSIBLE_CORE := ansible-core>=2.17
 
+# Personal-account machines pass PERSONAL=true to install personal-only App Store
+# apps (e.g. Strongbox). Off by default. setup.sh forwards $WHOTHIS_PERSONAL here.
+PERSONAL ?= false
+
 help:
 	@echo "Targets: all (default), version, homebrew, uv, playbook"
 
@@ -70,5 +74,7 @@ playbook: uv
 	@cd ansible && $(UVX) --python $(ANSIBLE_PY) --from '$(ANSIBLE_CORE)' \
 		ansible-playbook \
 		--ask-become-pass \
+		--timeout 60 \
 		--extra-vars ansible_python_interpreter=python3 \
+		--extra-vars personal=$(PERSONAL) \
 		main.yml

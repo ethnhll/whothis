@@ -2,7 +2,7 @@
 
 # arch -> brew prefix. NOTE: this logic is intentionally mirrored across three
 # runtimes (make/jinja/zsh): Makefile, here, and dotfiles/zsh/.zsh/.zprofile.
-brew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/local' }}"
+brew_prefix: "{{ '/opt/homebrew' if ansible_facts['architecture'] == 'arm64' else '/usr/local' }}"
 
 dotfiles_dir: "{{ playbook_dir }}/../dotfiles"
 dotfile_packages:
@@ -40,7 +40,7 @@ homebrew_packages:
 
 homebrew_casks:
   - claude
-  - claude-code
+  - claude-code@latest  # auto-updating variant (the pinned `claude-code` cask conflicts on the `claude` binary)
   - chromium
   - firefox@developer-edition
   - font-jetbrains-mono-nerd-font  # nerd font for wezterm + starship glyphs
@@ -62,6 +62,13 @@ sdkman_java_majors:
   - 11
   - 17
 
+# Set true only on machines signed into the personal Apple ID, so that the
+# account-specific App Store apps in mac_app_store_apps_personal get installed.
+# Off by default; enable per-machine with `make PERSONAL=true` (or
+# WHOTHIS_PERSONAL=true when running setup.sh). Keyed on the account, not the
+# hardware, so it survives the Intel -> Apple Silicon upgrade.
+personal: false
+
 # Mac App Store apps, installed via `mas` (requires being signed into the App Store).
 mac_app_store_apps:
   - { id: 497799835, name: Xcode }
@@ -71,5 +78,92 @@ mac_app_store_apps:
   - { id: 689185915, name: AlgoApp }  # AnkiApp flashcards (bundle com.ankiapp.client)
   - { id: 6720708363, name: Obsidian Web Clipper }
   - { id: 6502835663, name: Proton Pass for Safari }
-  - { id: 897283731, name: Strongbox }
   - { id: 1584519802, name: Vimlike }
+
+# App Store apps tied to the personal Apple ID only (installed when personal=true).
+mac_app_store_apps_personal:
+  - { id: 897283731, name: Strongbox }
+
+# macOS defaults, grouped by domain and applied by the "macOS defaults — ..."
+# tasks in main.yml. Entries are {key, type, value}; the domain is the group.
+# The screenshot location + folder are handled as separate tasks in main.yml.
+
+# Finder (task restarts Finder)
+finder_defaults:
+  - { key: ShowPathbar, type: bool, value: true }
+  - { key: AppleShowAllFiles, type: bool, value: true }
+  - { key: FXPreferredViewStyle, type: string, value: "Nlsv" }        # list view
+  - { key: _FXSortFoldersFirst, type: bool, value: true }
+  - { key: FXDefaultSearchScope, type: string, value: "SCcf" }        # search current folder
+  - { key: FXEnableExtensionChangeWarning, type: bool, value: false }
+  - { key: _FXShowPosixPathInTitle, type: bool, value: true }
+  - { key: ShowHardDrivesOnDesktop, type: bool, value: true }
+  - { key: ShowExternalHardDrivesOnDesktop, type: bool, value: true }
+  - { key: ShowMountedServersOnDesktop, type: bool, value: true }
+  - { key: QuitMenuItem, type: bool, value: true }                    # Cmd+Q quits Finder
+  - { key: WarnOnEmptyTrash, type: bool, value: false }
+  - { key: NewWindowTarget, type: string, value: "PfHm" }             # new windows -> Home
+  - { key: FXRemoveOldTrashItems, type: bool, value: true }           # auto-empty after 30d
+  - { key: _FXSortFoldersFirstOnDesktop, type: bool, value: true }
+  - { key: ShowRecentTags, type: bool, value: false }
+  - { key: FXPreferredGroupBy, type: string, value: "Kind" }
+
+# Dock (task restarts Dock)
+dock_defaults:
+  - { key: autohide, type: bool, value: true }
+  - { key: autohide-delay, type: float, value: 0 }
+  - { key: autohide-time-modifier, type: float, value: 0.4 }
+  - { key: tilesize, type: int, value: 48 }
+  - { key: show-recents, type: bool, value: false }
+  - { key: mru-spaces, type: bool, value: false }
+  - { key: static-only, type: bool, value: true }                     # only running apps
+  - { key: minimize-to-application, type: bool, value: true }
+  - { key: enable-spring-load-actions-on-all-items, type: bool, value: true }
+  - { key: showhidden, type: bool, value: true }
+  - { key: scroll-to-open, type: bool, value: true }
+
+# NSGlobalDomain: keyboard, text, dialogs, windows (apply on next login)
+global_defaults:
+  - { key: AppleShowAllExtensions, type: bool, value: true }
+  - { key: KeyRepeat, type: float, value: 2 }
+  - { key: InitialKeyRepeat, type: float, value: 10 }
+  - { key: ApplePressAndHoldEnabled, type: bool, value: false }
+  - { key: NSAutomaticQuoteSubstitutionEnabled, type: bool, value: false }
+  - { key: NSAutomaticDashSubstitutionEnabled, type: bool, value: false }
+  - { key: NSAutomaticSpellingCorrectionEnabled, type: bool, value: false }
+  - { key: NSAutomaticCapitalizationEnabled, type: bool, value: false }
+  - { key: NSAutomaticPeriodSubstitutionEnabled, type: bool, value: false }
+  - { key: AppleKeyboardUIMode, type: int, value: 3 }                 # full keyboard access
+  - { key: "com.apple.keyboard.fnState", type: bool, value: true }    # F1-F12 as function keys
+  - { key: NSNavPanelExpandedStateForSaveMode, type: bool, value: true }
+  - { key: NSNavPanelExpandedStateForSaveMode2, type: bool, value: true }
+  - { key: PMPrintingExpandedStateForPrint, type: bool, value: true }
+  - { key: PMPrintingExpandedStateForPrint2, type: bool, value: true }
+  - { key: NSDocumentSaveNewDocumentsToCloud, type: bool, value: false }
+  - { key: AppleInterfaceStyle, type: string, value: "Dark" }         # forces Dark mode
+  - { key: "com.apple.springing.enabled", type: bool, value: true }
+  - { key: "com.apple.springing.delay", type: float, value: 0.1 }
+  - { key: NSQuitAlwaysKeepsWindows, type: bool, value: false }       # disable resume
+  - { key: AppleSpacesSwitchOnActivate, type: bool, value: false }
+  - { key: AppleICUForce24HourTime, type: bool, value: true }
+  - { key: "com.apple.sound.beep.feedback", type: int, value: 1 }
+  - { key: NSWindowShouldDragOnGesture, type: bool, value: true }
+
+# Per-app / other domains (Control Center, screenshots, trackpad, etc.).
+# Each entry carries its own domain (and host where needed).
+other_defaults:
+  - { domain: com.apple.desktopservices, key: DSDontWriteNetworkStores, type: bool, value: true }
+  - { domain: com.apple.desktopservices, key: DSDontWriteUSBStores, type: bool, value: true }
+  - { domain: com.apple.controlcenter, key: BatteryShowPercentage, type: bool, value: true }
+  - { domain: com.apple.screencapture, key: type, type: string, value: "png" }
+  - { domain: com.apple.AppleMultitouchTrackpad, key: Clicking, type: int, value: 1 }
+  - { domain: com.apple.driver.AppleBluetoothMultitouch.trackpad, key: Clicking, type: int, value: 1 }
+  - { domain: NSGlobalDomain, key: "com.apple.mouse.tapBehavior", type: int, value: 1, host: currentHost }
+  - { domain: com.apple.driver.AppleBluetoothMultitouch.mouse, key: MouseButtonMode, type: string, value: "TwoButton" }
+  - { domain: com.apple.TextEdit, key: RichText, type: int, value: 0 }               # plain text default
+  - { domain: com.apple.print.PrintingPrefs, key: "Quit When Finished", type: bool, value: true }
+  - { domain: com.apple.ActivityMonitor, key: ShowCategory, type: int, value: 100 }   # all processes
+  - { domain: com.apple.AdLib, key: allowApplePersonalizedAdvertising, type: bool, value: false }
+  - { domain: com.apple.WindowManager, key: EnableStandardClickToShowDesktop, type: bool, value: false }
+  - { domain: com.apple.ImageCapture, key: disableHotPlug, type: bool, value: true }
+  - { domain: com.apple.CrashReporter, key: DialogType, type: string, value: "none" }

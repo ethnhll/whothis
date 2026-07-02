@@ -66,9 +66,10 @@ else
     git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
-# Run the bootstrap
+# Run the bootstrap. Set WHOTHIS_PERSONAL=true on the personal-Apple-ID machine
+# to also install personal-only App Store apps (e.g. Strongbox).
 cd "$INSTALL_DIR"
-make
+make PERSONAL="${WHOTHIS_PERSONAL:-false}"
 
 # Start fresh shell with new configuration
 exec zsh -l

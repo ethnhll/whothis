@@ -77,17 +77,19 @@
         - name: 'Java: install SDKMAN Temurin builds'
           ansible.builtin.shell:
             cmd: |
-              set -eo pipefail
+              set -e
               export SDKMAN_DIR="{{ brew_prefix }}/opt/sdkman-cli/libexec"
               source "$SDKMAN_DIR/bin/sdkman-init.sh"
-              export sdkman_auto_answer=true
-              ids=$(sdk list java | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-tem')
+              # `yes` answers SDKMAN's "set as default?" prompt on each install
+              # (the sdkman_auto_answer env var is not reliably honored). The last
+              # install (latest) ends up as the default java.
+              ids=$(sdk list java | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-tem' || true)
               for major in {{ sdkman_java_majors | join(' ') }}; do
                 id=$(printf '%s\n' "$ids" | grep -E "^${major}\." | head -1 || true)
-                if [ -n "$id" ]; then sdk install java "$id"; else echo "no Temurin build for Java $major"; fi
+                if [ -n "$id" ]; then yes | sdk install java "$id"; else echo "no Temurin build for Java $major"; fi
               done
-              latest=$(printf '%s\n' "$ids" | head -1)
-              [ -n "$latest" ] && sdk install java "$latest" || true
+              latest=$(printf '%s\n' "$ids" | head -1 || true)
+              if [ -n "$latest" ]; then yes | sdk install java "$latest"; fi
           args:
             executable: /bin/bash
           register: sdkman_java
@@ -97,7 +99,7 @@
 
         - name: Stow dotfiles
           ansible.builtin.command:
-            cmd: "{{ brew_prefix }}/bin/stow --no-folding --override='.*' -d {{ dotfiles_dir }} -t {{ ansible_env.HOME }} {{ item }}"
+            cmd: "{{ brew_prefix }}/bin/stow --no-folding --override='.*' -d {{ dotfiles_dir }} -t {{ ansible_facts['env']['HOME'] }} {{ item }}"
           loop: "{{ dotfile_packages }}"
           register: stow_result
           changed_when: stow_result.rc == 0
@@ -116,7 +118,7 @@
           community.general.mas:
             id: "{{ item.id }}"
             state: present
-          loop: "{{ mac_app_store_apps }}"
+          loop: "{{ mac_app_store_apps + (mac_app_store_apps_personal if personal | bool else []) }}"
           loop_control:
             label: "{{ item.name }}"
           register: mas_install
@@ -142,21 +144,6 @@
                   (with 2FA), then re-run: ansible-playbook --tags mas main.yml
 
         # ---- System hardening ----
-        # Touch ID for sudo via /etc/pam.d/sudo_local, which survives OS updates
-        # (editing /etc/pam.d/sudo directly gets clobbered by macOS updates).
-        - name: 'Security: enable Touch ID for sudo'
-          become: true
-          ansible.builtin.copy:
-            dest: /etc/pam.d/sudo_local
-            content: |
-              # Managed by whothis. Enables Touch ID for sudo.
-              auth       sufficient     pam_tid.so
-            owner: root
-            group: wheel
-            mode: "0444"
-          tags:
-            - hardening
-
         - name: 'Security: check application firewall state'
           become: true
           ansible.builtin.command:
@@ -284,247 +271,30 @@
           tags:
             - hardening
 
+        # Enabled LAST on purpose: once pam_tid is active, `sudo` (including
+        # Ansible's become) prompts for a fingerprint, which would interrupt every
+        # become task above. Via /etc/pam.d/sudo_local so it survives OS updates.
+        - name: 'Security: enable Touch ID for sudo'
+          become: true
+          ansible.builtin.copy:
+            dest: /etc/pam.d/sudo_local
+            content: |
+              # Managed by whothis. Enables Touch ID for sudo.
+              auth       sufficient     pam_tid.so
+            owner: root
+            group: wheel
+            mode: "0444"
+          tags:
+            - hardening
+
         # ---- macOS defaults ------------------------------------------------
-        # Added one at a time as they're vetted. Run just these with:
-        #   ansible-playbook --tags defaults main.yml
-        # macOS caches preferences, so each task notifies a killall handler to
-        # restart the owning app and apply the change immediately.
-        - name: 'Finder: show all filename extensions'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: AppleShowAllExtensions
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: show the path bar (folder hierarchy at window bottom)'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: ShowPathbar
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: show hidden files'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: AppleShowAllFiles
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        # Nlsv=list, icnv=icon, clmv=column, Flwv=gallery. Only sets the default
-        # for folders without a saved per-folder view (see note below).
-        - name: 'Finder: use list view by default'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: FXPreferredViewStyle
-            type: string
-            value: Nlsv
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: keep folders on top when sorting by name'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: _FXSortFoldersFirst
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: search the current folder by default (not the whole Mac)'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: FXDefaultSearchScope
-            type: string
-            value: SCcf
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: no warning when changing a file extension'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: FXEnableExtensionChangeWarning
-            type: bool
-            value: false
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: show full POSIX path in the window title'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: _FXShowPosixPathInTitle
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: show internal/external drives and servers on the Desktop'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: "{{ item }}"
-            type: bool
-            value: true
-          loop:
-            - ShowHardDrivesOnDesktop
-            - ShowExternalHardDrivesOnDesktop
-            - ShowMountedServersOnDesktop
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        # desktopservices changes need a logout to take effect (no killall).
-        - name: 'Finder: do not write .DS_Store on network and USB shares'
-          community.general.osx_defaults:
-            domain: com.apple.desktopservices
-            key: "{{ item }}"
-            type: bool
-            value: true
-          loop:
-            - DSDontWriteNetworkStores
-            - DSDontWriteUSBStores
-          tags:
-            - defaults
-
-        # ---- Dock ----
-        - name: 'Dock: auto-hide with no reveal delay'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: autohide
-            type: bool
-            value: true
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Dock: remove the auto-hide reveal delay'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: autohide-delay
-            type: float
-            value: 0
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Dock: faster auto-hide animation'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: autohide-time-modifier
-            type: float
-            value: 0.4
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        # CHOSEN VALUE: 48px icons (medium). Adjust to taste.
-        - name: 'Dock: icon size'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: tilesize
-            type: int
-            value: 48
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Dock: hide the recent-apps section'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: show-recents
-            type: bool
-            value: false
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Dock: do not auto-rearrange Spaces by most-recent use'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: mru-spaces
-            type: bool
-            value: false
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        # HEADS UP: static-only makes the Dock show ONLY running apps — your
-        # pinned launcher icons disappear from the Dock. Remove this task if you
-        # keep app shortcuts in the Dock.
-        - name: 'Dock: show only running apps (hides pinned icons)'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: static-only
-            type: bool
-            value: true
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        # ---- Keyboard & text (NSGlobalDomain) ----
-        # These apply per-app on next launch; a full logout applies them
-        # everywhere, so there's no handler to notify.
-        # Values are in ~15ms units. KeyRepeat 2 = fast repeat; InitialKeyRepeat
-        # 10 (~150ms) is about as short as macOS reliably honors (the Settings
-        # slider bottoms out at 15; lower than 10 gets clamped/flaky).
-        - name: 'Keyboard: fast key repeat rate'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: KeyRepeat
-            type: int
-            value: 2
-          tags:
-            - defaults
-
-        - name: 'Keyboard: shortest reliable delay before key repeat starts'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: InitialKeyRepeat
-            type: int
-            value: 10
-          tags:
-            - defaults
-
-        - name: 'Keyboard: hold-to-repeat instead of the accent popup'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: ApplePressAndHoldEnabled
-            type: bool
-            value: false
-          tags:
-            - defaults
-
-        - name: 'Text: disable smart quotes, smart dashes, autocorrect, auto-caps, and auto-period'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: "{{ item }}"
-            type: bool
-            value: false
-          loop:
-            - NSAutomaticQuoteSubstitutionEnabled
-            - NSAutomaticDashSubstitutionEnabled
-            - NSAutomaticSpellingCorrectionEnabled
-            - NSAutomaticCapitalizationEnabled
-            - NSAutomaticPeriodSubstitutionEnabled
-          tags:
-            - defaults
-
-        # ---- Screenshots ----
+        # Settings live as data in default.config.yml (finder_defaults,
+        # dock_defaults, global_defaults, other_defaults) and are applied by the
+        # grouped loops below. macOS caches prefs, so a change notifies the killall
+        # handlers; keyboard/text/login-window ones only fully apply after a logout.
         - name: 'Screenshots: ensure ~/Screenshots exists'
           ansible.builtin.file:
-            path: "{{ ansible_env.HOME }}/Screenshots"
+            path: "{{ ansible_facts['env']['HOME'] }}/Screenshots"
             state: directory
             mode: "0755"
           tags:
@@ -535,358 +305,66 @@
             domain: com.apple.screencapture
             key: location
             type: string
-            value: "{{ ansible_env.HOME }}/Screenshots"
+            value: "{{ ansible_facts['env']['HOME'] }}/Screenshots"
           notify: Restart SystemUIServer
           tags:
             - defaults
 
-        - name: 'Screenshots: use PNG format'
-          community.general.osx_defaults:
-            domain: com.apple.screencapture
-            key: type
-            type: string
-            value: png
-          notify: Restart SystemUIServer
-          tags:
-            - defaults
-
-        # ---- System & UI ----
-        - name: 'Dialogs: expand Save and Print panels by default'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: "{{ item }}"
-            type: bool
-            value: true
-          loop:
-            - NSNavPanelExpandedStateForSaveMode
-            - NSNavPanelExpandedStateForSaveMode2
-            - PMPrintingExpandedStateForPrint
-            - PMPrintingExpandedStateForPrint2
-          tags:
-            - defaults
-
-        - name: 'Documents: default Save to disk, not iCloud'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: NSDocumentSaveNewDocumentsToCloud
-            type: bool
-            value: false
-          tags:
-            - defaults
-
-        # HEADS UP: forces Dark mode; takes effect on next login. Remove if you
-        # prefer Light or the automatic Light/Dark switch.
-        - name: 'Appearance: use Dark mode'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: AppleInterfaceStyle
-            type: string
-            value: Dark
-          tags:
-            - defaults
-
-        # ---- Menu bar / Control Center ----
-        - name: 'Menu bar: show battery percentage'
-          community.general.osx_defaults:
-            domain: com.apple.controlcenter
-            key: BatteryShowPercentage
-            type: bool
-            value: true
-          notify: Restart ControlCenter
-          tags:
-            - defaults
-
-        # ---- Trackpad (tap to click; applies on next login) ----
-        - name: 'Trackpad: tap to click'
-          community.general.osx_defaults:
-            domain: "{{ item }}"
-            key: Clicking
-            type: bool
-            value: true
-          loop:
-            - com.apple.AppleMultitouchTrackpad
-            - com.apple.driver.AppleBluetoothMultitouch.trackpad
-          tags:
-            - defaults
-
-        - name: 'Trackpad: enable tap to click globally (incl. login screen)'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            host: currentHost
-            key: com.apple.mouse.tapBehavior
-            type: int
-            value: 1
-          tags:
-            - defaults
-
-        # ---- Finder (more) ----
-        - name: 'Finder: allow quitting Finder with Cmd+Q'
+        - name: 'macOS defaults — Finder'
           community.general.osx_defaults:
             domain: com.apple.finder
-            key: QuitMenuItem
-            type: bool
-            value: true
+            key: "{{ item.key }}"
+            type: "{{ item.type }}"
+            value: "{{ item.value }}"
+          loop: "{{ finder_defaults }}"
+          loop_control:
+            label: "{{ item.key }}"
           notify: Restart Finder
           tags:
             - defaults
 
-        - name: 'Finder: no confirmation when emptying the Trash'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: WarnOnEmptyTrash
-            type: bool
-            value: false
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        # ---- Keyboard access (applies on next login) ----
-        - name: 'Keyboard: full keyboard access — Tab moves between all controls'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: AppleKeyboardUIMode
-            type: int
-            value: 3
-          tags:
-            - defaults
-
-        # ---- Finder / Dock / TextEdit (batch) ----
-        - name: 'Finder: open new windows in the Home folder'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: NewWindowTarget
-            type: string
-            value: PfHm
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Dock: minimize windows into the app icon'
+        - name: 'macOS defaults — Dock'
           community.general.osx_defaults:
             domain: com.apple.dock
-            key: minimize-to-application
-            type: bool
-            value: true
+            key: "{{ item.key }}"
+            type: "{{ item.type }}"
+            value: "{{ item.value }}"
+          loop: "{{ dock_defaults }}"
+          loop_control:
+            label: "{{ item.key }}"
           notify: Restart Dock
           tags:
             - defaults
 
-        - name: 'Finder: enable spring-loaded folders'
+        # NSGlobalDomain: keyboard/text/dialogs/windows. Most apply on next login;
+        # notifies Finder for AppleShowAllExtensions (harmless for the others).
+        - name: 'macOS defaults — global (NSGlobalDomain)'
           community.general.osx_defaults:
             domain: NSGlobalDomain
-            key: com.apple.springing.enabled
-            type: bool
-            value: true
+            key: "{{ item.key }}"
+            type: "{{ item.type }}"
+            value: "{{ item.value }}"
+          loop: "{{ global_defaults }}"
+          loop_control:
+            label: "{{ item.key }}"
           notify: Restart Finder
           tags:
             - defaults
 
-        # 0.1s = a brief hover before a folder springs open (not instant).
-        - name: 'Finder: short spring-load delay'
+        # Per-app domains (Control Center, screenshots, trackpad, TextEdit, ...).
+        - name: 'macOS defaults — other apps'
           community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: com.apple.springing.delay
-            type: float
-            value: 0.1
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'TextEdit: default to plain text'
-          community.general.osx_defaults:
-            domain: com.apple.TextEdit
-            key: RichText
-            type: int
-            value: 0
-          tags:
-            - defaults
-
-        - name: 'Dock: enable spring-loading on all Dock items'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: enable-spring-load-actions-on-all-items
-            type: bool
-            value: true
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Printing: auto-quit the printer app when jobs finish'
-          community.general.osx_defaults:
-            domain: com.apple.print.PrintingPrefs
-            key: Quit When Finished
-            type: bool
-            value: true
-          tags:
-            - defaults
-
-        # 100 = "All Processes" — verified against the View menu on macOS 26.5.1.
-        - name: 'Activity Monitor: show all processes'
-          community.general.osx_defaults:
-            domain: com.apple.ActivityMonitor
-            key: ShowCategory
-            type: int
-            value: 100
-          tags:
-            - defaults
-
-        - name: 'Dock: dim the icons of hidden apps'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: showhidden
-            type: bool
-            value: true
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Dock: scroll up on an app icon to open App Exposé'
-          community.general.osx_defaults:
-            domain: com.apple.dock
-            key: scroll-to-open
-            type: bool
-            value: true
-          notify: Restart Dock
-          tags:
-            - defaults
-
-        - name: 'Apps: disable resume — relaunch fresh instead of reopening old windows'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: NSQuitAlwaysKeepsWindows
-            type: bool
-            value: false
-          tags:
-            - defaults
-
-        - name: 'Privacy: disable personalized Apple advertising'
-          community.general.osx_defaults:
-            domain: com.apple.AdLib
-            key: allowApplePersonalizedAdvertising
-            type: bool
-            value: false
-          tags:
-            - defaults
-
-        # Applies on next login (clicking the wallpaper no longer shoves windows aside).
-        - name: 'Desktop: do not move windows aside when clicking the wallpaper'
-          community.general.osx_defaults:
-            domain: com.apple.WindowManager
-            key: EnableStandardClickToShowDesktop
-            type: bool
-            value: false
-          tags:
-            - defaults
-
-        - name: 'Image Capture: do not auto-open when a device is plugged in'
-          community.general.osx_defaults:
-            domain: com.apple.ImageCapture
-            key: disableHotPlug
-            type: bool
-            value: true
-          tags:
-            - defaults
-
-        - name: 'Finder: auto-remove Trash items older than 30 days'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: FXRemoveOldTrashItems
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: keep folders on top on the Desktop too'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: _FXSortFoldersFirstOnDesktop
-            type: bool
-            value: true
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Finder: hide the Recent Tags section in the sidebar'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: ShowRecentTags
-            type: bool
-            value: false
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Spaces: do not switch Spaces when activating an app with a window elsewhere'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: AppleSpacesSwitchOnActivate
-            type: bool
-            value: false
-          tags:
-            - defaults
-
-        - name: 'Finder: group files by Kind by default (when Use Groups is on)'
-          community.general.osx_defaults:
-            domain: com.apple.finder
-            key: FXPreferredGroupBy
-            type: string
-            value: Kind
-          notify: Restart Finder
-          tags:
-            - defaults
-
-        - name: 'Keyboard: use F1–F12 as standard function keys (media keys need Fn)'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: com.apple.keyboard.fnState
-            type: bool
-            value: true
-          tags:
-            - defaults
-
-        - name: 'Clock: use 24-hour time'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: AppleICUForce24HourTime
-            type: bool
-            value: true
-          tags:
-            - defaults
-
-        - name: 'Sound: play feedback when changing the volume'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: com.apple.sound.beep.feedback
-            type: int
-            value: 1
-          tags:
-            - defaults
-
-        - name: 'Windows: move a window by Ctrl+Cmd-dragging anywhere in it'
-          community.general.osx_defaults:
-            domain: NSGlobalDomain
-            key: NSWindowShouldDragOnGesture
-            type: bool
-            value: true
-          tags:
-            - defaults
-
-        - name: 'Crash Reporter: suppress the crash dialog when apps crash'
-          community.general.osx_defaults:
-            domain: com.apple.CrashReporter
-            key: DialogType
-            type: string
-            value: none
-          tags:
-            - defaults
-
-        - name: 'Magic Mouse: enable right-click'
-          community.general.osx_defaults:
-            domain: com.apple.driver.AppleBluetoothMultitouch.mouse
-            key: MouseButtonMode
-            type: string
-            value: TwoButton
+            domain: "{{ item.domain }}"
+            host: "{{ item.host | default(omit) }}"
+            key: "{{ item.key }}"
+            type: "{{ item.type }}"
+            value: "{{ item.value }}"
+          loop: "{{ other_defaults }}"
+          loop_control:
+            label: "{{ item.domain }} :: {{ item.key }}"
+          notify:
+            - Restart SystemUIServer
+            - Restart ControlCenter
           tags:
             - defaults
 
