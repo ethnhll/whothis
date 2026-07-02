@@ -1,9 +1,25 @@
 [user]
-	email = 5614778+ethnhll@users.noreply.github.com
+	email = 5614778+indoorhill@users.noreply.github.com
 	name = Ethan Hill
 [init]
 	defaultBranch = main
 [push]
 	autoSetupRemote = true
-[safe]
-	directory = /Users/ethan/dyad-apps/*
+	followTags = true
+[pull]
+	rebase = true
+[fetch]
+	prune = true
+	pruneTags = true
+[rebase]
+	autoStash = true
+	updateRefs = true
+[merge]
+	conflictStyle = zdiff3
+[diff]
+	algorithm = histogram
+	colorMoved = zebra
+[branch]
+	sort = -committerdate
+[column]
+	ui = auto

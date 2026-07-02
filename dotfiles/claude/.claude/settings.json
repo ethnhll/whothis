@@ -59,7 +59,7 @@
   "workflowKeywordTriggerEnabled": false,
   "statusLine": {
     "type": "command",
-    "command": "bash /Users/ethan/.claude/statusline-command.sh"
+    "command": "bash ~/.claude/statusline-command.sh"
   },
   "enabledPlugins": {
     "code-simplifier@claude-plugins-official": true,
@@ -67,7 +67,6 @@
     "context7@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "commit-commands@claude-plugins-official": true,
-    "serena@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
     "understand-anything@understand-anything": true
   },
@@ -87,6 +86,7 @@
   },
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
+  "theme": "auto",
   "editorMode": "vim",
   "voiceEnabled": true
 }

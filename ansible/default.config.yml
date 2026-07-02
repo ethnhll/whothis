@@ -10,6 +10,7 @@ dotfile_packages:
   - config
   - claude
   - git
+  - ideavim
   - ssh
   - vim
   - wezterm
@@ -17,34 +18,49 @@ dotfile_packages:
 
 homebrew_packages:
   - act  # github actions local testing
+  - android-platform-tools
   - colima
   - docker
+  - fnm  # node version manager
   - gh  # github cli
   - git
+  - lima
   - localstack
   - mas  # Mac Apple Store CLI
   - proton-pass-cli
+  - ripgrep  # fast, gitignore-aware code search (rg)
   - sdkman/tap/sdkman-cli  # Java version manager (auto-taps sdkman/tap)
   - starship
   - stow
+  - tealdeer
   - vim
+  - witr
   - zsh-completions
+  - zsh-syntax-highlighting
 
 homebrew_casks:
   - claude
   - claude-code
   - chromium
   - firefox@developer-edition
+  - font-jetbrains-mono-nerd-font  # nerd font for wezterm + starship glyphs
   - jetbrains-toolbox
   - keepassxc  # provides keepassxc-cli
   - obsidian  # text editor
   - proton-drive
   - proton-pass
   - protonvpn
+  - puremac
   - rectangle  # tiling window manager
-  - virtualbox
   - wezterm  # terminal (config shipped in dotfiles/wezterm)
   - yubico-authenticator  # security key TOTP
+
+# SDKMAN Java: the newest Temurin build for each major below is resolved and
+# installed at run time, plus the newest available overall. Bump/extend freely.
+sdkman_java_majors:
+  - 8
+  - 11
+  - 17
 
 # Mac App Store apps, installed via `mas` (requires being signed into the App Store).
 mac_app_store_apps:
@@ -52,3 +68,8 @@ mac_app_store_apps:
   - { id: 409183694, name: Keynote }
   - { id: 409203825, name: Numbers }
   - { id: 409201541, name: Pages }
+  - { id: 689185915, name: AlgoApp }  # AnkiApp flashcards (bundle com.ankiapp.client)
+  - { id: 6720708363, name: Obsidian Web Clipper }
+  - { id: 6502835663, name: Proton Pass for Safari }
+  - { id: 897283731, name: Strongbox }
+  - { id: 1584519802, name: Vimlike }

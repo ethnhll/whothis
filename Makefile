@@ -30,6 +30,14 @@ endif
 BREW := $(BREW_PREFIX)/bin/brew
 UVX := $(BREW_PREFIX)/bin/uvx
 
+# Pin the Ansible runtime. With no pins, uvx resolves ansible-core against
+# whatever Python it happens to find; on a fresh box that was an old 3.9, which
+# pulls ansible-core 2.15 (too old for community.general 13 -> warnings/failures)
+# and lacks prebuilt wheels for some deps (forcing a Rust source build). Forcing
+# a modern managed Python + matching ansible-core avoids both.
+ANSIBLE_PY := 3.12
+ANSIBLE_CORE := ansible-core>=2.17
+
 help:
 	@echo "Targets: all (default), version, homebrew, uv, playbook"
 
@@ -43,7 +51,7 @@ homebrew:
 		echo "$$($(BREW) --version | head -1) is already installed."; \
 	else \
 		echo "Installing Homebrew..."; \
-		NONINTERACTIVE=1 /bin/bash -c "$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; \
+		/bin/bash -c "$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; \
 	fi
 
 uv: homebrew
@@ -56,10 +64,11 @@ uv: homebrew
 
 playbook: uv
 	@echo "Installing Ansible collections (from requirements.yml)..."
-	@cd ansible && $(UVX) --from ansible-core ansible-galaxy \
+	@cd ansible && $(UVX) --python $(ANSIBLE_PY) --from '$(ANSIBLE_CORE)' ansible-galaxy \
 		collection install -r requirements.yml
 	@echo "Running playbook..."
-	@cd ansible && $(UVX) --from ansible-core \
+	@cd ansible && $(UVX) --python $(ANSIBLE_PY) --from '$(ANSIBLE_CORE)' \
 		ansible-playbook \
+		--ask-become-pass \
 		--extra-vars ansible_python_interpreter=python3 \
 		main.yml

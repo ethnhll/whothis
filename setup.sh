@@ -1,10 +1,10 @@
-#!/usr/bin/sh
+#!/bin/sh
 
 # whothis - Macbook bootstrap configuration
 
 set -e
 
-REPO_URL="https://github.com/ethnhll/whothis.git"
+REPO_URL="https://github.com/indoorhill/whothis.git"
 INSTALL_DIR="${HOME}/whothis"
 
 UNAME=$(uname -s)
@@ -12,6 +12,16 @@ UNAME=$(uname -s)
 # only macOS is supported
 if [ "$UNAME" != "Darwin" ]; then
     echo "error: Unsupported operating system: $UNAME"
+    exit 1
+fi
+
+# Homebrew refuses to run as root, so neither do we. Running the whole bootstrap
+# under sudo is the most common setup mistake; fail early with a clear message
+# instead of letting Homebrew abort halfway through.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "error: do not run whothis as root or with sudo."
+    echo "Run it as your normal admin user. You'll be prompted for your password"
+    echo "when a step that needs it (like installing Homebrew) runs."
     exit 1
 fi
 

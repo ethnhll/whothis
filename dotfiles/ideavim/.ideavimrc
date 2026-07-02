@@ -1,0 +1,7 @@
+" whothis managed .ideavimrc
+"
+" Single source of truth: mirror the regular vim config. IdeaVim applies the
+" settings it supports (numbers, search, indentation, scrolloff, ...) and
+" ignores the rest (wildmenu, listchars, undofile, colorcolumn, ...). Edit the
+" real config at ~/.vim/vimrc, not here.
+source ~/.vim/vimrc

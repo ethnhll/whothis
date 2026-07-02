@@ -14,3 +14,4 @@ ZSH_CACHE_DIR=$HOME/.cache/zsh
 # Environment variables needed by all shells (including non-interactive)
 export EDITOR='vim'         # default editor
 export SSH_AUTH_SOCK=$HOME/.ssh/proton-pass-agent.sock
+export HOMEBREW_NO_ANALYTICS=1  # opt out of Homebrew usage analytics

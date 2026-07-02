@@ -8,13 +8,13 @@ One script to install all development tools, applications, and personal dotfiles
 Run this single command on a fresh Mac:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ethnhll/whothis/main/setup.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/indoorhill/whothis/main/setup.sh)"
 ```
 
 Or clone and run manually:
 
 ```bash
-git clone https://github.com/ethnhll/whothis.git ~/whothis
+git clone https://github.com/indoorhill/whothis.git ~/whothis
 cd ~/whothis
 ./setup.sh
 ```
