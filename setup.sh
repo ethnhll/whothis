@@ -32,7 +32,12 @@ if ! dseditgroup -o checkmember -m "$(whoami)" admin >/dev/null 2>&1; then
     exit 1
 fi
 
-# Install CLT only if not already present
+# Command Line Tools. `xcode-select -p` succeeding is NOT enough: the active
+# developer directory can point at a broken/partial Xcode.app (e.g. a half-
+# finished App Store download), which makes make/clang fail with "unable to
+# locate xcodebuild". So verify the toolchain actually resolves, and fall back
+# to the Command Line Tools if it doesn't.
+CLT_DIR="/Library/Developer/CommandLineTools"
 if ! xcode-select -p >/dev/null 2>&1; then
     touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
     CLT_PACKAGE=$(softwareupdate --list | grep "Label: Command Line Tools" | head -1 | awk -F: '{print $2}' | xargs)
@@ -40,6 +45,16 @@ if ! xcode-select -p >/dev/null 2>&1; then
     softwareupdate -i "$CLT_PACKAGE" --agree-to-license
     echo "Command Line Tools successfully installed."
     rm /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+elif ! /usr/bin/make --version >/dev/null 2>&1; then
+    echo "warning: active developer dir ($(xcode-select -p)) has no working toolchain."
+    if [ -x "$CLT_DIR/usr/bin/make" ]; then
+        echo "Pointing xcode-select at the Command Line Tools (needs sudo)..."
+        sudo xcode-select --switch "$CLT_DIR"
+    else
+        echo "error: no working toolchain and no Command Line Tools present."
+        echo "Install them with: xcode-select --install"
+        exit 1
+    fi
 else
     echo "Command Line Tools already installed."
 fi
