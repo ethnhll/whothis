@@ -37,7 +37,6 @@ apt_packages:
   - docker.io
   - stow
   - zsh
-  - zsh-completions
   - zsh-syntax-highlighting
 
 # Installed via `{{ mise_exe }} use --global <tool>` (mise's registry short
