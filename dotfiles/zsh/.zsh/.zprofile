@@ -15,6 +15,10 @@ for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew; do
 done
 unset _brew
 
+# mise-managed tool shims (plays Homebrew's role on Linux - see mise_tools in
+# default.config.yml). No-ops until setup.sh installs mise.
+export PATH="$HOME/.local/share/mise/shims:$PATH"
+
 # Personal bin dirs, prepended after brew so they take priority
 mkdir -p "$HOME/.local/bin"
 export PATH="$HOME/.local/bin:$PATH"
