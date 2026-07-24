@@ -13,5 +13,8 @@ ZSH_CACHE_DIR=$HOME/.cache/zsh
 
 # Environment variables needed by all shells (including non-interactive)
 export EDITOR='vim'         # default editor
-export SSH_AUTH_SOCK=$HOME/.ssh/proton-pass-agent.sock
+# Only override SSH_AUTH_SOCK where Proton Pass's agent actually runs (its
+# socket exists); otherwise leave it alone so a forwarded agent (e.g. sshd
+# setting it for an incoming ForwardAgent session) isn't clobbered.
+[[ -S "$HOME/.ssh/proton-pass-agent.sock" ]] && export SSH_AUTH_SOCK="$HOME/.ssh/proton-pass-agent.sock"
 export HOMEBREW_NO_ANALYTICS=1  # opt out of Homebrew usage analytics
