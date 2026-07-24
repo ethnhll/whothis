@@ -1,8 +1,18 @@
 ---
 
-# arch -> brew prefix. NOTE: this logic is intentionally mirrored across three
-# runtimes (make/jinja/zsh): Makefile, here, and dotfiles/zsh/.zsh/.zprofile.
+# Tool locations, derived from gathered facts so the playbook is
+# self-contained (no --extra-vars plumbing needed). setup.sh makes the same
+# arch -> prefix decision independently for its pre-Ansible bootstrap steps.
+# (dotfiles/zsh/.zsh/.zprofile also probes both brew prefixes at shell
+# startup so login shells work without the repo.)
 brew_prefix: "{{ '/opt/homebrew' if ansible_facts['architecture'] == 'arm64' else '/usr/local' }}"
+mise_exe: "{{ ansible_facts['env']['HOME'] }}/.local/bin/mise"
+mise_shims: "{{ ansible_facts['env']['HOME'] }}/.local/share/mise/shims"
+
+# Per-OS paths/lists for the shared tasks in tasks/common.yml.
+uv_exe: "{{ brew_prefix ~ '/bin/uv' if ansible_facts['os_family'] == 'Darwin' else mise_shims ~ '/uv' }}"
+stow_exe: "{{ brew_prefix ~ '/bin/stow' if ansible_facts['os_family'] == 'Darwin' else 'stow' }}"
+stow_packages: "{{ dotfile_packages if ansible_facts['os_family'] == 'Darwin' else dotfile_packages_linux }}"
 
 dotfiles_dir: "{{ playbook_dir }}/../dotfiles"
 dotfile_packages:
@@ -16,6 +26,39 @@ dotfile_packages:
   - wezterm
   - zsh
 
+# dotfile_packages minus wezterm (GUI terminal) and ideavim (JetBrains
+# plugin) - neither applies on a headless server.
+dotfile_packages_linux: "{{ dotfile_packages | difference(['wezterm', 'ideavim']) }}"
+
+# Debian/Ubuntu: apt is reserved for the handful of things mise can't manage
+# (a systemd service, or shell plugin repos that aren't versioned binaries).
+# Everything else in mise_tools below goes through mise instead.
+apt_packages:
+  - docker.io
+  - stow
+  - zsh
+  - zsh-completions
+  - zsh-syntax-highlighting
+
+# Installed via `{{ mise_exe }} use --global <tool>` (mise's registry short
+# names). Node/Rust/Java/Python are handled separately below via mise's own
+# core plugins instead of fnm/sdkman/system-python.
+mise_tools:
+  - claude-code@latest  # explicit @latest so re-provisioning re-pins to the newest release
+  - gh  # github cli
+  - ripgrep  # fast, gitignore-aware code search (rg)
+  - shellcheck  # shell linter (used by ./setup.sh check)
+  - starship
+  - vim
+
+# Java majors installed via mise's core java plugin (Temurin builds); the
+# last one is also set as the mise default. Bump/extend freely.
+mise_java_majors:
+  - 8
+  - 11
+  - 17
+  - 21
+
 homebrew_packages:
   - act  # github actions local testing
   - android-platform-tools
@@ -26,19 +69,21 @@ homebrew_packages:
   - git
   - lima
   - localstack
-  - mas  # Mac Apple Store CLI
   - proton-pass-cli
   - ripgrep  # fast, gitignore-aware code search (rg)
   - sdkman/tap/sdkman-cli  # Java version manager (auto-taps sdkman/tap)
+  - shellcheck  # shell linter (used by ./setup.sh check)
   - starship
   - stow
   - tealdeer
   - vim
   - witr
+  - xcodes  # installs/manages Xcode from developer.apple.com (no App Store/mas)
   - zsh-completions
   - zsh-syntax-highlighting
 
 homebrew_casks:
+  - algoapp  # flashcards (formerly AnkiApp)
   - claude
   - claude-code@latest  # auto-updating variant (the pinned `claude-code` cask conflicts on the `claude` binary)
   - chromium
@@ -55,6 +100,15 @@ homebrew_casks:
   - wezterm  # terminal (config shipped in dotfiles/wezterm)
   - yubico-authenticator  # security key TOTP
 
+# Apps registered as login items (System Events; names must match
+# /Applications/<name>.app). First run prompts once to allow terminal
+# automation of System Events.
+login_items:
+  - Rectangle
+  - Proton Pass
+  - Proton Drive
+  - JetBrains Toolbox
+
 # SDKMAN Java: the newest Temurin build for each major below is resolved and
 # installed at run time, plus the newest available overall. Bump/extend freely.
 sdkman_java_majors:
@@ -62,29 +116,19 @@ sdkman_java_majors:
   - 11
   - 17
 
-# Set true only on machines signed into the personal Apple ID, so that the
-# account-specific App Store apps in mac_app_store_apps_personal get installed.
-# Off by default; enable per-machine with `make PERSONAL=true` (or
-# WHOTHIS_PERSONAL=true when running setup.sh). Keyed on the account, not the
-# hardware, so it survives the Intel -> Apple Silicon upgrade.
-personal: false
-
-# Mac App Store apps, installed via `mas` (requires being signed into the App Store).
-mac_app_store_apps:
-  - { id: 497799835, name: Xcode }
+# Apps with no non-App-Store distribution (no cask, no direct download -
+# mostly Safari App Extensions, which Apple requires to ship via the App
+# Store). `mas` is unreliable enough that these are no longer auto-installed;
+# the playbook prints these links so you can install/update them manually.
+app_store_manual_apps:
   - { id: 409183694, name: Keynote }
   - { id: 409203825, name: Numbers }
   - { id: 409201541, name: Pages }
-  - { id: 689185915, name: AlgoApp }  # AnkiApp flashcards (bundle com.ankiapp.client)
   - { id: 6720708363, name: Obsidian Web Clipper }
   - { id: 6502835663, name: Proton Pass for Safari }
   - { id: 1584519802, name: Vimlike }
 
-# App Store apps tied to the personal Apple ID only (installed when personal=true).
-mac_app_store_apps_personal:
-  - { id: 897283731, name: Strongbox }
-
-# macOS defaults, grouped by domain and applied by the "macOS defaults — ..."
+# macOS defaults, grouped by domain and applied by the "Apply macOS defaults - ..."
 # tasks in main.yml. Entries are {key, type, value}; the domain is the group.
 # The screenshot location + folder are handled as separate tasks in main.yml.
 
@@ -113,7 +157,7 @@ dock_defaults:
   - { key: autohide, type: bool, value: true }
   - { key: autohide-delay, type: float, value: 0 }
   - { key: autohide-time-modifier, type: float, value: 0.4 }
-  - { key: tilesize, type: int, value: 48 }
+  - { key: tilesize, type: float, value: 48 }
   - { key: show-recents, type: bool, value: false }
   - { key: mru-spaces, type: bool, value: false }
   - { key: static-only, type: bool, value: true }                     # only running apps
@@ -125,8 +169,8 @@ dock_defaults:
 # NSGlobalDomain: keyboard, text, dialogs, windows (apply on next login)
 global_defaults:
   - { key: AppleShowAllExtensions, type: bool, value: true }
-  - { key: KeyRepeat, type: float, value: 2 }
-  - { key: InitialKeyRepeat, type: float, value: 10 }
+  - { key: KeyRepeat, type: float, value: 2 }                        # fastest UI repeat rate
+  - { key: InitialKeyRepeat, type: float, value: 15 }                 # shortest UI delay-until-repeat
   - { key: ApplePressAndHoldEnabled, type: bool, value: false }
   - { key: NSAutomaticQuoteSubstitutionEnabled, type: bool, value: false }
   - { key: NSAutomaticDashSubstitutionEnabled, type: bool, value: false }

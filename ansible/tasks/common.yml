@@ -1,0 +1,19 @@
+---
+# OS-independent tasks, included from main.yml after the per-OS file.
+# uv_exe, stow_exe, and stow_packages resolve per OS in default.config.yml.
+
+- name: 'Python: install the latest CPython 3 via uv'
+  ansible.builtin.command:
+    cmd: "{{ uv_exe }} python install 3"
+  register: uv_python
+  changed_when: "'Installed' in (uv_python.stdout + uv_python.stderr)"
+  tags:
+    - toolchains
+
+- name: Stow dotfiles
+  ansible.builtin.command:
+    cmd: "{{ stow_exe }} --no-folding --override='.*' -d {{ dotfiles_dir }} -t {{ ansible_facts['env']['HOME'] }} {{ stow_packages | join(' ') }}"
+  register: stow_result
+  changed_when: stow_result.rc == 0
+  tags:
+    - dotfiles

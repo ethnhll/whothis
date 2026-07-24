@@ -1,0 +1,444 @@
+---
+# macOS provisioning, included from main.yml when os_family == "Darwin".
+
+# Current Homebrew requires third-party taps to be explicitly trusted
+# before their formulae can be installed. sdkman-cli lives in such a tap,
+# so tap + trust it before the package list (which references
+# sdkman/tap/sdkman-cli) is installed, otherwise the install aborts with
+# "tap trust is required".
+- name: Tap the sdkman tap
+  community.general.homebrew_tap:
+    name: sdkman/tap
+    state: present
+    path: "{{ brew_prefix }}/bin"
+  tags:
+    - homebrew
+
+# No module covers `brew trust`, so shell out for the trust step.
+- name: Trust the sdkman-cli formula
+  ansible.builtin.command:
+    cmd: "{{ brew_prefix }}/bin/brew trust --formula sdkman/tap/sdkman-cli"
+  changed_when: false
+  tags:
+    - homebrew
+
+- name: Install Homebrew packages
+  community.general.homebrew:
+    name: "{{ homebrew_packages }}"
+    state: present
+    update_homebrew: true
+  tags:
+    - homebrew
+
+- name: Install Homebrew casks
+  community.general.homebrew_cask:
+    name: "{{ homebrew_casks }}"
+    state: present
+  tags:
+    - homebrew_casks
+
+# ---- Language toolchains ----
+# (Python via uv is shared with Linux; see tasks/common.yml.)
+- name: 'Node: install the latest LTS via fnm and set it as default'
+  ansible.builtin.shell:
+    cmd: |
+      set -eo pipefail
+      export PATH="{{ brew_prefix }}/bin:$PATH"
+      fnm install --lts
+      fnm default lts-latest
+  args:
+    executable: /bin/bash
+  register: fnm_node
+  changed_when: "'Installing Node' in (fnm_node.stdout + fnm_node.stderr)"
+  tags:
+    - toolchains
+
+# Resolves the newest Temurin build for each major (and newest overall)
+# from `sdk list java`, so there are no exact patch versions to keep pinned.
+# pipefail is deliberately NOT set here: `yes | sdk install` always ends
+# with `yes` killed by SIGPIPE (141), which pipefail would turn into a
+# spurious failure.
+- name: 'Java: install SDKMAN Temurin builds' # noqa: risky-shell-pipe
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      export SDKMAN_DIR="{{ brew_prefix }}/opt/sdkman-cli/libexec"
+      source "$SDKMAN_DIR/bin/sdkman-init.sh"
+      # `yes` answers SDKMAN's "set as default?" prompt on each install
+      # (the sdkman_auto_answer env var is not reliably honored). The last
+      # install (latest) ends up as the default java.
+      ids=$(sdk list java | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-tem' || true)
+      for major in {{ sdkman_java_majors | join(' ') }}; do
+        id=$(printf '%s\n' "$ids" | grep -E "^${major}\." | head -1 || true)
+        if [ -n "$id" ]; then yes | sdk install java "$id"; else echo "no Temurin build for Java $major"; fi
+      done
+      latest=$(printf '%s\n' "$ids" | head -1 || true)
+      if [ -n "$latest" ]; then yes | sdk install java "$latest"; fi
+  args:
+    executable: /bin/bash
+  register: sdkman_java
+  changed_when: "'Done installing' in sdkman_java.stdout"
+  tags:
+    - toolchains
+
+# ---- System hardening ----
+- name: 'Security: check application firewall state'
+  become: true
+  ansible.builtin.command:
+    cmd: /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+  register: firewall_state
+  changed_when: false
+  tags:
+    - hardening
+
+- name: 'Security: enable the application firewall'
+  become: true
+  ansible.builtin.command:
+    cmd: /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
+  changed_when: true
+  when: "'disabled' in firewall_state.stdout"
+  tags:
+    - hardening
+
+- name: 'Security: check firewall stealth mode'
+  become: true
+  ansible.builtin.command:
+    cmd: /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode
+  register: fw_stealth
+  changed_when: false
+  tags:
+    - hardening
+
+- name: 'Security: enable firewall stealth mode (do not answer pings/scans)'
+  become: true
+  ansible.builtin.command:
+    cmd: /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on
+  changed_when: true
+  when: "'disabled' in fw_stealth.stdout"
+  tags:
+    - hardening
+
+- name: 'Security: disable the guest account'
+  become: true
+  community.general.osx_defaults:
+    domain: /Library/Preferences/com.apple.loginwindow
+    key: GuestEnabled
+    type: bool
+    value: false
+  tags:
+    - hardening
+
+- name: 'Security: disable Bonjour multicast advertisements'
+  become: true
+  community.general.osx_defaults:
+    domain: /Library/Preferences/com.apple.mDNSResponder
+    key: NoMulticastAdvertisements
+    type: bool
+    value: true
+  tags:
+    - hardening
+
+- name: 'Privacy: stop submitting diagnostics and usage data to Apple'
+  become: true
+  community.general.osx_defaults:
+    domain: "/Library/Application Support/CrashReporter/DiagnosticMessagesHistory"
+    key: AutoSubmit
+    type: bool
+    value: false
+  tags:
+    - hardening
+
+- name: 'Privacy: limit ad tracking'
+  community.general.osx_defaults:
+    domain: com.apple.AdLib
+    key: forceLimitAdTracking
+    type: bool
+    value: true
+  tags:
+    - hardening
+
+# zsh's compinit refuses (or warns about) completion dirs that are
+# group/world-writable ("insecure directories"). Homebrew leaves
+# <prefix>/share group-writable by admin on some setups (seen on the
+# Intel machine under /usr/local), which taints the fpath dirs that
+# .zshrc adds. Tighten just the completion-related paths.
+- name: 'Security: tighten zsh completion dir permissions (compaudit)'
+  become: true
+  ansible.builtin.shell: |
+    set -o pipefail
+    loose=$(
+      find "{{ brew_prefix }}/share" -maxdepth 0 -type d \( -perm -g+w -o -perm -o+w \) 2>/dev/null
+      find "{{ brew_prefix }}/share/zsh" "{{ brew_prefix }}/share/zsh-completions" \
+           \( -perm -g+w -o -perm -o+w \) 2>/dev/null
+    )
+    if [ -n "$loose" ]; then
+      printf '%s\n' "$loose" | tr '\n' '\0' | xargs -0 chmod g-w,o-w
+      echo changed
+    fi
+  args:
+    executable: /bin/sh
+  register: zsh_dir_perms
+  changed_when: "'changed' in zsh_dir_perms.stdout"
+  tags:
+    - hardening
+
+# Toggling Remote Login via systemsetup often needs the terminal to have
+# Full Disk Access; warn rather than fail if it can't be applied.
+- name: 'Security: check Remote Login (inbound SSH) state'
+  become: true
+  ansible.builtin.command:
+    cmd: systemsetup -getremotelogin
+  register: remote_login
+  changed_when: false
+  failed_when: false
+  tags:
+    - hardening
+
+- name: 'Security: disable Remote Login (inbound SSH)'
+  become: true
+  ansible.builtin.command:
+    cmd: systemsetup -f -setremotelogin off
+  register: remote_login_off
+  changed_when: remote_login_off.rc == 0
+  failed_when: false
+  when: "'On' in remote_login.stdout"
+  tags:
+    - hardening
+
+- name: 'Security: warn if Remote Login could not be disabled'
+  when: remote_login_off.rc is defined and remote_login_off.rc != 0
+  ansible.builtin.debug:
+    msg: >-
+      Could not disable Remote Login automatically (usually needs Full
+      Disk Access for your terminal). Turn it off in System Settings >
+      General > Sharing > Remote Login, or grant FDA and re-run
+      `./setup.sh playbook --tags hardening`.
+  tags:
+    - hardening
+
+- name: 'Security: check FileVault status'
+  become: true
+  ansible.builtin.command:
+    cmd: fdesetup status
+  register: filevault
+  changed_when: false
+  failed_when: false
+  tags:
+    - hardening
+
+- name: 'Security: warn if FileVault (full-disk encryption) is off'
+  when: "'FileVault is On' not in filevault.stdout"
+  ansible.builtin.debug:
+    msg: >-
+      FileVault is NOT enabled. Turn on full-disk encryption in System
+      Settings > Privacy & Security > FileVault and store the recovery key
+      safely. (Not auto-enabled: it generates a recovery key you must save.)
+  tags:
+    - hardening
+
+# Enabled LAST on purpose: once pam_tid is active, `sudo` (including
+# Ansible's become) prompts for a fingerprint, which would interrupt every
+# become task above. Via /etc/pam.d/sudo_local so it survives OS updates.
+- name: 'Security: enable Touch ID for sudo'
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/pam.d/sudo_local
+    content: |
+      # Managed by whothis. Enables Touch ID for sudo.
+      auth       sufficient     pam_tid.so
+    owner: root
+    group: wheel
+    mode: "0444"
+  tags:
+    - hardening
+
+# ---- macOS defaults ------------------------------------------------
+# Settings live as data in default.config.yml (finder_defaults,
+# dock_defaults, global_defaults, other_defaults) and are applied by the
+# grouped loops below. macOS caches prefs, so a change notifies the killall
+# handlers; keyboard/text/login-window ones only fully apply after a logout.
+- name: 'Screenshots: ensure ~/Screenshots exists'
+  ansible.builtin.file:
+    path: "{{ ansible_facts['env']['HOME'] }}/Screenshots"
+    state: directory
+    mode: "0755"
+  tags:
+    - defaults
+
+- name: 'Screenshots: save to ~/Screenshots instead of the Desktop'
+  community.general.osx_defaults:
+    domain: com.apple.screencapture
+    key: location
+    type: string
+    value: "{{ ansible_facts['env']['HOME'] }}/Screenshots"
+  notify: Restart SystemUIServer
+  tags:
+    - defaults
+
+# osx_defaults refuses to overwrite a key whose stored value has a
+# different type ("Type mismatch. Type in defaults: str"). This happens
+# when a key was previously written with a different type (e.g. macOS
+# stores ApplePressAndHoldEnabled as a string). Delete any such key so
+# the write tasks below can recreate it with the intended type.
+# Rendered as one script over all entries (a per-entry Ansible loop costs a
+# full module round-trip per key, tens of seconds for ~50 keys).
+- name: 'Clear macOS defaults keys whose stored type conflicts'
+  ansible.builtin.shell: |
+    set -o pipefail
+    check() {
+      flag=$1; domain=$2; key=$3; want=$4
+      have=$(defaults $flag read-type "$domain" "$key" 2>/dev/null | sed 's/^Type is //')
+      if [ -n "$have" ] && [ "$have" != "$want" ]; then
+        defaults $flag delete "$domain" "$key"
+        echo changed
+      fi
+    }
+    {% for item in (finder_defaults | map('combine', {'domain': 'com.apple.finder'}) | list)
+       + (dock_defaults | map('combine', {'domain': 'com.apple.dock'}) | list)
+       + (global_defaults | map('combine', {'domain': 'NSGlobalDomain'}) | list)
+       + other_defaults %}
+    {% set flag = '-currentHost' if item.host | default('') == 'currentHost' else '' %}
+    {% set want = {'bool': 'boolean', 'int': 'integer', 'dict': 'dictionary'}.get(item.type, item.type) %}
+    check '{{ flag }}' '{{ item.domain }}' '{{ item.key }}' '{{ want }}'
+    {% endfor %}
+  args:
+    executable: /bin/sh
+  register: defaults_type_fix
+  changed_when: "'changed' in defaults_type_fix.stdout"
+  tags:
+    - defaults
+
+- name: 'Apply macOS defaults - Finder'
+  community.general.osx_defaults:
+    domain: com.apple.finder
+    key: "{{ item.key }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+  loop: "{{ finder_defaults }}"
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart Finder
+  tags:
+    - defaults
+
+- name: 'Apply macOS defaults - Dock'
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: "{{ item.key }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+  loop: "{{ dock_defaults }}"
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart Dock
+  tags:
+    - defaults
+
+# NSGlobalDomain: keyboard/text/dialogs/windows. Most apply on next login;
+# notifies Finder for AppleShowAllExtensions (harmless for the others).
+- name: 'Apply macOS defaults - global (NSGlobalDomain)'
+  community.general.osx_defaults:
+    domain: NSGlobalDomain
+    key: "{{ item.key }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+  loop: "{{ global_defaults }}"
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart Finder
+  tags:
+    - defaults
+
+# Per-app domains (Control Center, screenshots, trackpad, TextEdit, ...).
+- name: 'Apply macOS defaults - other apps'
+  community.general.osx_defaults:
+    domain: "{{ item.domain }}"
+    host: "{{ item.host | default(omit) }}"
+    key: "{{ item.key }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+  loop: "{{ other_defaults }}"
+  loop_control:
+    label: "{{ item.domain }} :: {{ item.key }}"
+  notify:
+    - Restart SystemUIServer
+    - Restart ControlCenter
+  tags:
+    - defaults
+
+# ---- Passwords / autofill -------------------------------------------
+# Proton Pass is the password manager; stop Safari offering the built-in
+# one. Safari is sandboxed, so writing its domain needs Full Disk Access
+# for the terminal; warn instead of failing when it's not granted.
+# Choosing Proton Pass as the system AutoFill provider has no public
+# automation surface; that stays a manual step (see README).
+- name: 'Passwords: disable Safari built-in password autofill'
+  community.general.osx_defaults:
+    domain: com.apple.Safari
+    key: AutoFillPasswords
+    type: bool
+    value: false
+  register: safari_autofill
+  ignore_errors: true
+  tags:
+    - defaults
+
+- name: 'Passwords: warn if Safari autofill could not be disabled'
+  when: safari_autofill is failed
+  ansible.builtin.debug:
+    msg: >-
+      Could not write Safari's autofill setting (usually needs Full Disk
+      Access for your terminal). Either grant FDA and re-run
+      `./setup.sh playbook --tags defaults`, or untick Safari >
+      Settings > AutoFill > "Usernames and passwords" manually.
+  tags:
+    - defaults
+
+# ---- Login items ----------------------------------------------------
+# Registered via System Events; the first run prompts once to allow the
+# terminal to automate System Events. Apps must already be installed
+# (casks above), so this runs late in the play.
+# One task for all items: the (slow) System Events list is fetched once
+# instead of once per item.
+- name: 'Login items: launch selected apps at login'
+  ansible.builtin.shell: |
+    set -o pipefail
+    existing=$(osascript -e 'tell application "System Events" to get the name of every login item' \
+      | tr ',' '\n' | sed 's/^ *//;s/ *$//')
+    {% for item in login_items %}
+    if ! printf '%s\n' "$existing" | grep -qFx "{{ item }}"; then
+      osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/{{ item }}.app", hidden:false}'
+      echo changed
+    fi
+    {% endfor %}
+  args:
+    executable: /bin/sh
+  register: login_item_result
+  changed_when: "'changed' in login_item_result.stdout"
+  tags:
+    - login
+
+# ---- Manual follow-ups ------------------------------------------------
+# Printed last so they're the last thing visible when the run finishes.
+- name: 'Xcode: reminder to install manually'
+  ansible.builtin.debug:
+    msg: >-
+      Xcode.app is not installed automatically (needs an interactive Apple ID
+      + 2FA login). Run `xcodes install --latest` to install it.
+  tags:
+    - app_store
+
+# mas is no longer used: Apple locked down the private installd API it
+# relied on (installs now need sudo) and long ago removed the ones behind
+# `mas account`/`purchase`. Xcode and AlgoApp moved to xcodes/Homebrew above;
+# everything else left here has no non-App-Store distribution (mostly Safari
+# App Extensions, which Apple requires to ship via the App Store), just
+# print the links so they're one click away.
+- name: Print App Store links for apps with no other distribution
+  ansible.builtin.debug:
+    msg: "{{ item.name }}: https://apps.apple.com/app/id{{ item.id }}"
+  loop: "{{ app_store_manual_apps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags:
+    - app_store

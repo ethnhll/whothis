@@ -62,6 +62,10 @@ setopt HIST_VERIFY             # show a history expansion (e.g. !!) before runni
 
 # --- Vi Mode ---
 bindkey -v
+# bindkey -v rebinds backspace to vi-backward-delete-char, which enforces
+# real vi's rule that you can't delete past where insert mode started.
+# Rebind it to the plain widget so backspace always works normally.
+bindkey -M viins '^?' backward-delete-char
 bindkey -M viins '^R' history-incremental-search-backward
 bindkey -M vicmd '^R' history-incremental-search-backward
 export CLICOLOR=1

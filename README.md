@@ -29,8 +29,7 @@ The setup script will:
    language toolchains, applies macOS defaults, and hardens security settings
 6. Symlink dotfiles using GNU stow
 
-Pass `WHOTHIS_PERSONAL=true` (env) to also install personal-Apple-ID-only App
-Store apps, and `WHOTHIS_FORCE=1` to hard-reset an existing clone to `origin/main`.
+Pass `WHOTHIS_FORCE=1` (env) to hard-reset an existing clone to `origin/main`.
 
 ## What Gets Installed
 
@@ -40,14 +39,15 @@ change what gets installed; it is not duplicated here because the list used to
 drift. The three install lanes are:
 
 - `homebrew_packages`: CLI tools (git, vim, stow, ripgrep, fnm for Node, Docker
-  via Colima, LocalStack, act, SDKMAN for Java, and more)
+  via Colima, LocalStack, act, SDKMAN for Java, `xcodes` for Xcode, and more)
 - `homebrew_casks`: GUI apps (Claude, Claude Code, Chromium, Firefox Developer
   Edition, JetBrains Toolbox, Obsidian, WezTerm, Proton suite, KeePassXC,
-  Yubico Authenticator, Rectangle, and more)
-- `mac_app_store_apps`: App Store apps via `mas` (Xcode, Keynote, Numbers, Pages,
-  AlgoApp, Obsidian Web Clipper, Proton Pass for Safari, Vimlike). Apps tied to a
-  personal Apple ID (e.g. Strongbox) live in `mac_app_store_apps_personal` and are
-  installed only when `personal=true`.
+  Yubico Authenticator, Rectangle, AlgoApp, and more)
+- `app_store_manual_apps`: apps with no distribution outside the App Store
+  (Keynote, Numbers, Pages, and several Safari extensions, which Apple requires
+  to ship via the App Store). We stopped using `mas` to install these because
+  it now needs sudo and can't check sign-in status, so the playbook just
+  prints their App Store links for a one-time manual install/update.
 
 Beyond installs, the playbook also provisions language toolchains (Java 8/11/17
 plus latest via SDKMAN, latest Python via uv, latest LTS Node via fnm), applies a
@@ -73,8 +73,7 @@ whothis/
 │   ├── vim/                 # Vim configuration
 │   ├── wezterm/             # WezTerm terminal configuration
 │   └── zsh/                 # zsh configuration 
-├── Makefile                 # Build orchestration
-├── setup.sh                 # Bootstrap script
+├── setup.sh                 # Bootstrap + orchestration script
 └── README.md
 ```
 
@@ -90,31 +89,30 @@ stow zsh   # Symlinks zsh config to ~
 stow vim   # Symlinks vim config to ~
 ```
 
-## Makefile Targets
+## setup.sh Commands
 
 ```bash
-make                      # all: version + homebrew + uv + playbook (default)
-make help                 # List available targets
-make version              # Display current version (from git tag)
-make homebrew             # Install Homebrew
-make uv                   # Install uv package manager
-make playbook             # Run the Ansible playbook
+./setup.sh                # full bootstrap: preflight + clone/update + provision
+./setup.sh help           # List available commands
+./setup.sh provision      # homebrew + uv + playbook (no clone/update)
+./setup.sh homebrew       # Install Homebrew
+./setup.sh uv             # Install uv package manager
+./setup.sh playbook       # Run the Ansible playbook (extra args pass through,
+                          # e.g. ./setup.sh playbook --tags app_store)
+./setup.sh check          # shellcheck + playbook syntax check + ansible-lint
 ```
-
-Pass `PERSONAL=true` to any invocation (e.g. `make PERSONAL=true`) to include the
-personal-Apple-ID-only App Store apps.
 
 ## Customization
 
 Edit `ansible/default.config.yml` to customize:
 - `homebrew_packages` - CLI tools to install
 - `homebrew_casks` - GUI applications to install
-- `mac_app_store_apps` / `mac_app_store_apps_personal` - App Store apps via `mas`
+- `app_store_manual_apps` - apps to print App Store links for (no `mas` install)
 - `dotfile_packages` - which `dotfiles/` subdirs get stowed
 - `sdkman_java_majors` - Java major versions to install (newest build of each)
-- `personal` - default for the personal-Apple-ID gate (overridable per run)
+- `login_items` - apps registered to launch at login
 - `finder_defaults`, `dock_defaults`, `global_defaults`, `other_defaults` -
-  macOS `defaults` grouped by domain, applied by the `macOS defaults — …` tasks
+  macOS `defaults` grouped by domain, applied by the `macOS defaults - ...` tasks
 
 ## Manual Steps
 
@@ -122,16 +120,26 @@ A few things can't be automated and need doing once after the first run:
 
 - **sudo password**: the playbook runs with `--ask-become-pass`, so it prompts
   once for your password to apply the privileged hardening tasks.
-- **Mac App Store**: sign in to the App Store app before `mas` can install
-  anything. The playbook prompts and warns rather than failing if you aren't
-  signed in.
+- **Mac App Store apps**: the playbook prints App Store links for the handful
+  of apps that have no other distribution (`app_store_manual_apps`, mostly
+  Safari extensions). Install/update those manually; sign in to the App Store
+  app first if you haven't.
+- **Xcode**: installed via `xcodes` (not the App Store). Run
+  `xcodes install --latest` once and sign in with your Apple ID when prompted.
 - **FileVault**: not auto-enabled (it generates a recovery key you must save).
-  The playbook warns if full-disk encryption is off — turn it on in System
+  The playbook warns if full-disk encryption is off; turn it on in System
   Settings > Privacy & Security > FileVault and store the recovery key safely.
 - **Remote Login**: disabling it via `systemsetup` may need Full Disk Access for
   your terminal. If the playbook can't turn it off, it warns; disable it in
   System Settings > General > Sharing > Remote Login, or grant FDA and re-run
-  `ansible-playbook --tags hardening main.yml`.
+  `./setup.sh playbook --tags hardening`.
+- **Default password manager**: in System Settings > General > AutoFill &
+  Passwords, enable **Proton Pass** as the AutoFill provider and switch off the
+  built-in **Passwords** app. The playbook disables Safari's own password
+  autofill (needs Full Disk Access), but the system provider choice has no
+  automation surface.
+- **Automation prompts**: the login-items task asks once to let your terminal
+  control System Events; allow it, or re-run `./setup.sh playbook --tags login`.
 - **JetBrains Toolbox shell launchers**: open Toolbox, turn on *Generate shell
   scripts* in Settings, and set the scripts location to `~/.local/bin` (already
   on `PATH` via `.zprofile`). IDEs are then launchable from the terminal. The

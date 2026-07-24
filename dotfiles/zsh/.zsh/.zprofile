@@ -5,8 +5,8 @@
 
 # Homebrew environment first (PATH, FPATH, MANPATH) so `brew` is available
 # to later steps. Loops both arches and silently skips if brew isn't installed.
-# NOTE: arch -> prefix logic is also encoded in Makefile and
-# ansible/default.config.yml; keep the three in sync.
+# (setup.sh owns the arch -> prefix decision for provisioning; this probe is
+# deliberately independent so login shells work without the repo.)
 for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew; do
     if [[ -x "$_brew" ]]; then
         eval "$("$_brew" shellenv)"

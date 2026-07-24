@@ -1,0 +1,76 @@
+---
+# Debian-family Linux provisioning (Ubuntu, Debian, Mint, ...), included from
+# main.yml when os_family == "Debian".
+#
+# mise plays the role Homebrew plays on macOS: it installs everything below
+# that isn't genuinely system-level. apt is reserved for the few things mise
+# can't manage (a systemd service, or shell plugin repos that aren't versioned
+# binaries). setup.sh already installed mise itself and `uv` before this runs.
+
+- name: Install apt packages
+  become: true
+  ansible.builtin.apt:
+    name: "{{ apt_packages }}"
+    state: present
+    update_cache: true
+  tags:
+    - apt
+
+- name: Enable and start the docker service
+  become: true
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+  tags:
+    - apt
+
+- name: Add the current user to the docker group
+  become: true
+  ansible.builtin.user:
+    name: "{{ ansible_facts['env']['USER'] }}"
+    groups: docker
+    append: true
+  tags:
+    - apt
+
+- name: Install mise-managed tools
+  ansible.builtin.command:
+    cmd: "{{ mise_exe }} use --global {{ mise_tools | join(' ') }}"
+  changed_when: false
+  tags:
+    - mise
+
+# ---- Language toolchains (mise's own core plugins, no fnm/sdkman) ----
+- name: 'Node: install the latest LTS via mise'
+  ansible.builtin.command:
+    cmd: "{{ mise_exe }} use --global node@lts"
+  changed_when: false
+  tags:
+    - toolchains
+
+- name: 'Rust: install the latest stable via mise (provides cargo)'
+  ansible.builtin.command:
+    cmd: "{{ mise_exe }} use --global rust@latest"
+  changed_when: false
+  tags:
+    - toolchains
+
+# (Python via uv is shared with macOS; see tasks/common.yml.)
+
+# Installs each major without changing the mise default, then sets the
+# newest major (last in the list) as the default - mirrors sdkman_java_majors
+# on macOS, but mise resolves the newest patch per major on its own.
+- name: 'Java: install Temurin builds via mise'
+  ansible.builtin.command:
+    cmd: "{{ mise_exe }} install {{ mise_java_majors | map('regex_replace', '^', 'java@temurin-') | join(' ') }}"
+  changed_when: false
+  tags:
+    - toolchains
+
+- name: 'Java: set the newest Temurin build as the mise default'
+  ansible.builtin.command:
+    cmd: "{{ mise_exe }} use --global java@temurin-{{ mise_java_majors | last }}"
+  changed_when: false
+  tags:
+    - toolchains

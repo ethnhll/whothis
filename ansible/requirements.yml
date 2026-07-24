@@ -1,5 +1,5 @@
 ---
-# Installed by `make playbook` via:
+# Installed by `./setup.sh playbook` via:
 #   ansible-galaxy collection install -r requirements.yml
 # This is the authoritative source for Ansible collections; pin versions here.
 collections:

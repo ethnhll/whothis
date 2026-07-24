@@ -49,9 +49,9 @@
       "Bash(/opt/homebrew/bin/python3:*)"
     ],
     "ask": [],
-    "defaultMode": "default"
+    "defaultMode": "auto"
   },
-  "model": "claude-opus-4-8",
+  "model": "opus",
   "hooks": {},
   "worktree": {
     "baseRef": "head"
@@ -64,21 +64,12 @@
   "enabledPlugins": {
     "code-simplifier@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "context7@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "commit-commands@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
-    "understand-anything@understand-anything": true
+    "frontend-design@claude-plugins-official": true
   },
-  "extraKnownMarketplaces": {
-    "understand-anything": {
-      "source": {
-        "source": "github",
-        "repo": "Egonex-AI/Understand-Anything"
-      }
-    }
-  },
-  "effortLevel": "high",
+  "extraKnownMarketplaces": {},
+  "effortLevel": "medium",
   "promptSuggestionEnabled": false,
   "voice": {
     "enabled": true,
@@ -88,5 +79,8 @@
   "skipWorkflowUsageWarning": true,
   "theme": "auto",
   "editorMode": "vim",
-  "voiceEnabled": true
+  "preferredNotifChannel": "auto",
+  "switchModelsOnFlag": false,
+  "voiceEnabled": true,
+  "autoMemoryEnabled": false
 }
