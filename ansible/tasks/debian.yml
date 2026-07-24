@@ -16,6 +16,14 @@
   tags:
     - apt
 
+- name: Set zsh as the login shell
+  become: true
+  ansible.builtin.user:
+    name: "{{ ansible_facts['env']['USER'] }}"
+    shell: /usr/bin/zsh
+  tags:
+    - apt
+
 - name: Enable and start the docker service
   become: true
   ansible.builtin.systemd:

@@ -48,6 +48,7 @@ mise_tools:
   - ripgrep  # fast, gitignore-aware code search (rg)
   - shellcheck  # shell linter (used by ./setup.sh check)
   - starship
+  - usage  # mise's own completion/help renderer needs this on PATH
   - vim
 
 # Java majors installed via mise's core java plugin (Temurin builds); the
