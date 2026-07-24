@@ -12,8 +12,19 @@
 
 - name: Stow dotfiles
   ansible.builtin.command:
-    cmd: "{{ stow_exe }} --no-folding --override='.*' -d {{ dotfiles_dir }} -t {{ ansible_facts['env']['HOME'] }} {{ stow_packages | join(' ') }}"
+    cmd: "{{ stow_exe }} -v --no-folding --override='.*' -d {{ dotfiles_dir }} -t {{ ansible_facts['env']['HOME'] }} {{ stow_packages | join(' ') }}"
   register: stow_result
-  changed_when: stow_result.rc == 0
+  changed_when: "'LINK:' in stow_result.stderr"
+  tags:
+    - dotfiles
+
+# Deliberately NOT part of the ssh stow package: this holds per-machine host
+# configs (ephemeral lab hosts, local key/agent bindings) that must never be
+# tracked in git. See the Include in dotfiles/ssh/.ssh/config.
+- name: 'SSH: create the untracked per-machine hosts.d directory'
+  ansible.builtin.file:
+    path: "{{ ansible_facts['env']['HOME'] }}/.ssh/hosts.d"
+    state: directory
+    mode: "0700"
   tags:
     - dotfiles

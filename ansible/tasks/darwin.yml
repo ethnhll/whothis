@@ -49,7 +49,12 @@
   args:
     executable: /bin/bash
   register: fnm_node
-  changed_when: "'Installing Node' in (fnm_node.stdout + fnm_node.stderr)"
+  # fnm always prints "Installing Node ..." even when it's already installed
+  # (followed by "warning: Version already installed"), so a real install is
+  # only that first line WITHOUT the warning.
+  changed_when: >-
+    'Installing Node' in (fnm_node.stdout + fnm_node.stderr)
+    and 'already installed' not in (fnm_node.stdout + fnm_node.stderr)
   tags:
     - toolchains
 
@@ -64,16 +69,32 @@
       set -e
       export SDKMAN_DIR="{{ brew_prefix }}/opt/sdkman-cli/libexec"
       source "$SDKMAN_DIR/bin/sdkman-init.sh"
-      # `yes` answers SDKMAN's "set as default?" prompt on each install
-      # (the sdkman_auto_answer env var is not reliably honored). The last
-      # install (latest) ends up as the default java.
-      ids=$(sdk list java | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-tem' || true)
+      # `yes` answers SDKMAN's "set as default?" prompt on a real install
+      # (the sdkman_auto_answer env var is not reliably honored). Only call
+      # `sdk install` on versions NOT already installed: if a version IS
+      # already installed, `sdk install` asks a DIFFERENT "override?" prompt
+      # first, and `yes` would answer that too, forcing a full reinstall on
+      # every run.
+      listing=$(sdk list java)
+      ids=$(printf '%s\n' "$listing" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-tem' || true)
       for major in {{ sdkman_java_majors | join(' ') }}; do
         id=$(printf '%s\n' "$ids" | grep -E "^${major}\." | head -1 || true)
-        if [ -n "$id" ]; then yes | sdk install java "$id"; else echo "no Temurin build for Java $major"; fi
+        if [ -z "$id" ]; then
+          echo "no Temurin build for Java $major"
+        elif printf '%s\n' "$listing" | grep -F "$id" | grep -q installed; then
+          echo "Java $id already installed"
+        else
+          yes | sdk install java "$id"
+        fi
       done
       latest=$(printf '%s\n' "$ids" | head -1 || true)
-      if [ -n "$latest" ]; then yes | sdk install java "$latest"; fi
+      if [ -n "$latest" ]; then
+        if printf '%s\n' "$listing" | grep -F "$latest" | grep -q installed; then
+          sdk default java "$latest"
+        else
+          yes | sdk install java "$latest"
+        fi
+      fi
   args:
     executable: /bin/bash
   register: sdkman_java

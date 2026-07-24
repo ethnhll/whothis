@@ -181,13 +181,34 @@ run_playbook() {
     cd "$ANSIBLE_DIR"
     echo "Installing Ansible collections (from requirements.yml)..."
     run_ansible ansible-galaxy collection install -r requirements.yml
+
+    # become over ansible_connection=local is a long-standing Ansible bug:
+    # privilege escalation assumes a pty that the local connection plugin
+    # doesn't allocate, so it fails to prompt reliably ("Duplicate become
+    # password prompt"), and a sudo timestamp primed in THIS shell (tty-scoped)
+    # isn't visible to Ansible's module subprocesses (no controlling tty), so
+    # `sudo -n` there still asks for a password. Grant a temporary NOPASSWD
+    # sudoers rule for the run instead; become_flags=-n in ansible.cfg then
+    # never needs to prompt at all. Removed on exit, success or failure.
+    echo "Granting temporary passwordless sudo for the provisioning run..."
+    sudo -v
+    sudoers_snippet="$(mktemp)"
+    echo "$(whoami) ALL=(ALL) NOPASSWD: ALL" >"$sudoers_snippet"
+    chmod 440 "$sudoers_snippet"
+    sudo visudo -c -f "$sudoers_snippet"
+    sudo install -m 440 "$sudoers_snippet" /etc/sudoers.d/whothis-bootstrap
+    rm -f "$sudoers_snippet"
+    trap 'sudo rm -f /etc/sudoers.d/whothis-bootstrap' EXIT
+
     echo "Running playbook..."
     run_ansible ansible-playbook \
-        --ask-become-pass \
         --timeout 60 \
         --extra-vars ansible_python_interpreter=python3 \
         "$@" \
         main.yml
+
+    sudo rm -f /etc/sudoers.d/whothis-bootstrap
+    trap - EXIT
 }
 
 provision() {
